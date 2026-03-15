@@ -24,6 +24,9 @@ import {
   Database,
   Filter,
   ExternalLink,
+  ShieldAlert,
+  Lock,
+  ArrowUp,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -31,6 +34,12 @@ const API_BASE = import.meta.env.VITE_API_BASE;
 function Dashboard() {
   const [activePage, setActivePage] = useState("risk");
   const [activeSection, setActiveSection] = useState("community");
+
+  const [currentRole, setCurrentRole] = useState("");
+
+  const isSupport = currentRole === "support";
+
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const [summaryStats, setSummaryStats] = useState([]);
   const [factorSufferingData, setFactorSufferingData] = useState([]);
@@ -41,6 +50,8 @@ function Dashboard() {
   const [severityRows, setSeverityRows] = useState([]);
   const [improvementRows, setImprovementRows] = useState([]);
   const [factorImprovementData, setFactorImprovementData] = useState([]);
+
+  const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
   const [selectedCondition, setSelectedCondition] = useState("");
 
@@ -99,6 +110,65 @@ function Dashboard() {
   }, [activePage]);
 
   useEffect(() => {
+    if (isSupport && activePage === "explorer") {
+      setActivePage("risk");
+    }
+  }, [isSupport, activePage]);
+
+  useEffect(() => {
+  const handleScroll = () => {
+    if (window.scrollY > 400) {
+      setShowBackToTop(true);
+    } else {
+      setShowBackToTop(false);
+    }
+  };
+
+  window.addEventListener("scroll", handleScroll);
+
+  return () => window.removeEventListener("scroll", handleScroll);
+}, []);
+
+useEffect(() => {
+  const savedRole = sessionStorage.getItem("role");
+
+  if (!savedRole) {
+    window.location.href = "/";
+  } else {
+    setCurrentRole(savedRole);
+  }
+}, []);
+
+useEffect(() => {
+  let timeoutId;
+
+  const resetTimer = () => {
+    clearTimeout(timeoutId);
+
+    timeoutId = setTimeout(() => {
+      sessionStorage.removeItem("role");
+      alert("Session expired due to inactivity. Please log in again.");
+      window.location.href = "/";
+    }, SESSION_TIMEOUT_MS);
+  };
+
+  const events = ["mousemove", "keydown", "scroll", "click"];
+
+  events.forEach((event) => {
+    window.addEventListener(event, resetTimer);
+  });
+
+  resetTimer();
+
+  return () => {
+    clearTimeout(timeoutId);
+    events.forEach((event) => {
+      window.removeEventListener(event, resetTimer);
+    });
+  };
+}, []);
+
+  useEffect(() => {
     const handleScroll = () => {
       const sectionIds = currentSections.map((item) => item.id);
       const scrollPosition = window.scrollY + 180;
@@ -116,7 +186,7 @@ function Dashboard() {
     handleScroll();
 
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [activePage]);
+    }, [activePage, currentSections]);
 
   const buildGlobalQueryString = () => {
     const params = new URLSearchParams();
@@ -232,7 +302,7 @@ function Dashboard() {
   }, [globalFilters]);
 
   useEffect(() => {
-    if (activePage !== "explorer") return;
+    if (activePage !== "explorer" || isSupport) return;
 
     const controller = new AbortController();
 
@@ -279,7 +349,7 @@ function Dashboard() {
     fetchExplorerData();
 
     return () => controller.abort();
-  }, [activePage, explorerFilters, globalFilters]);
+  }, [activePage, explorerFilters, globalFilters, isSupport]);
 
   const iconMap = {
     users: Users,
@@ -287,6 +357,37 @@ function Dashboard() {
     heart: HeartPulse,
     chart: TrendingUp,
   };
+
+const supportSummaryStats = [
+  {
+    title: "Accessible Modules",
+    value: "2",
+    change: "Limited access",
+    trend: "neutral",
+    icon: "users",
+  },
+  {
+    title: "Dashboard Status",
+    value: "Active",
+    change: "System online",
+    trend: "neutral",
+    icon: "activity",
+  },
+  {
+    title: "Data Refresh",
+    value: "Available",
+    change: "Latest sync ready",
+    trend: "neutral",
+    icon: "chart",
+  },
+  {
+    title: "Record Access",
+    value: "Restricted",
+    change: "Raw data hidden",
+    trend: "neutral",
+    icon: "heart",
+  },
+];
 
   const getTrendStyles = (trend) => {
     if (trend === "up") {
@@ -311,6 +412,8 @@ function Dashboard() {
       icon: <Minus size={16} />,
     };
   };
+
+  const displaySummaryStats = isSupport ? supportSummaryStats : summaryStats;
 
   const conditionOptions = useMemo(() => {
     const unique = [...new Set(factorConditionRows.map((row) => row.health_condition))];
@@ -512,18 +615,18 @@ function Dashboard() {
               Improvement & Recovery Performance
             </button>
 
-            <button
-              onClick={() => setActivePage("explorer")}
-              className={`w-full text-left rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                activePage === "explorer"
-                  ? "bg-blue-600 text-white shadow-md"
-                  : "bg-slate-800 text-slate-200 hover:bg-slate-700"
-              }`}
-            >
-              Data Explorer
-
-              
-            </button>
+                        {!isSupport && (
+              <button
+                onClick={() => setActivePage("explorer")}
+                className={`w-full text-left rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  activePage === "explorer"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                }`}
+              >
+                Data Explorer
+              </button>
+            )}
           </div>
         </div>
 
@@ -557,13 +660,54 @@ function Dashboard() {
       </aside>
 
       <main className="p-6 md:ml-80">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Hinsight Wellbeing Dashboard
-          </h1>
-          <p className="text-gray-600 mb-6">
-            Employee wellbeing, health conditions, risk levels, improvement analytics, and data exploration.
-          </p>
+          <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-2">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                Hinsight Wellbeing Dashboard
+              </h1>
+              <p className="text-gray-600 mb-4">
+                Employee wellbeing, health conditions, risk levels, improvement analytics, and data exploration.
+              </p>
+            </div>
+
+            <div
+  className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium border border-gray-200 bg-white shadow-sm ${
+    isSupport
+      ? "text-amber-700"
+      : "text-slate-700"
+  }`}
+>
+  <Lock size={14} />
+  <span>{isSupport ? "Support User" : "Authorized User"}</span>
+</div>
+<button
+    onClick={() => {
+      sessionStorage.removeItem("role");
+      sessionStorage.removeItem("username");
+      window.location.href = "/";
+    }}
+    className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-gray-50 transition"
+  >
+    Logout
+  </button>
+          </div>
+
+          {isSupport && (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+              <div className="flex items-start gap-3">
+                <ShieldAlert size={20} className="mt-0.5" />
+                <div>
+                  <p className="font-semibold">
+                    Sensitive health data is restricted for support users.
+                  </p>
+                  <p className="text-sm mt-1">
+                    This demo view hides health metrics, analytics charts, and raw employee health records to reduce privacy exposure.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Global Filters */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-6">
@@ -666,7 +810,7 @@ function Dashboard() {
                   </div>
                 ))
               ) : (
-                summaryStats.map((item) => {
+                displaySummaryStats.map((item) => {
                   const IconComponent = iconMap[item.icon];
                   const trendStyle = getTrendStyles(item.trend);
 
@@ -691,11 +835,11 @@ function Dashboard() {
                       </div>
 
                       <div
-                        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${trendStyle.text} ${trendStyle.bg}`}
-                      >
-                        {trendStyle.icon}
-                        <span>{item.change}</span>
-                      </div>
+  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${trendStyle.text} ${trendStyle.bg}`}
+>
+  {trendStyle.icon}
+  <span>{item.change}</span>
+</div>
                     </div>
                   );
                 })
@@ -714,7 +858,7 @@ function Dashboard() {
                 </p>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Panel title="Users Suffering from Each Factor" loading={loading}>
+                  <Panel title="Users Suffering from Each Factor" loading={loading} restricted={isSupport}>
                     <BarChart data={factorSufferingData} onClick={handleFactorBarClick}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="factor" interval={0} />
@@ -724,7 +868,7 @@ function Dashboard() {
                     </BarChart>
                   </Panel>
 
-                  <Panel title="Users at Risk by Factor" loading={loading}>
+                  <Panel title="Users at Risk by Factor" loading={loading} restricted={isSupport}>
                     <BarChart data={factorRiskData} onClick={handleFactorBarClick}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="factor" interval={0} />
@@ -734,7 +878,7 @@ function Dashboard() {
                     </BarChart>
                   </Panel>
 
-                  <Panel title="Users Living with Chronic Conditions" loading={loading}>
+                  <Panel title="Users Living with Chronic Conditions" loading={loading} restricted={isSupport}>
                     <BarChart
                       data={[...conditionSufferingData].sort((a, b) => b.employees - a.employees)}
                       layout="vertical"
@@ -753,7 +897,7 @@ function Dashboard() {
                     </BarChart>
                   </Panel>
 
-                  <Panel title="Users at Risk of Developing Conditions" loading={loading}>
+                  <Panel title="Users at Risk of Developing Conditions" loading={loading} restricted={isSupport}>
                     <BarChart
                       data={[...conditionRiskData].sort((a, b) => b.employees - a.employees)}
                       layout="vertical"
@@ -788,26 +932,30 @@ function Dashboard() {
                       Distribution by Selected Health Condition
                     </h3>
 
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-600">Condition</label>
-                      <select
-                        value={selectedCondition}
-                        onChange={(e) => setSelectedCondition(e.target.value)}
-                        className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {conditionOptions.map((condition) => (
-                          <option key={condition} value={condition}>
-                            {condition}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {!isSupport && (
+  <div className="flex items-center gap-2">
+    <label className="text-sm text-gray-600">Condition</label>
+    <select
+      value={selectedCondition}
+      onChange={(e) => setSelectedCondition(e.target.value)}
+      className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+    >
+      {conditionOptions.map((condition) => (
+        <option key={condition} value={condition}>
+          {condition}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
                   </div>
 
                   {loading ? (
-                    <EmptyChart text="Loading chart..." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={360}>
+  <EmptyChart text="Loading chart..." />
+) : isSupport ? (
+  <RestrictedChart text="Correlation chart hidden for support role." />
+) : (
+  <ResponsiveContainer width="100%" height={360}>
                       <BarChart
                         data={filteredCorrelationData}
                         layout="vertical"
@@ -847,9 +995,11 @@ function Dashboard() {
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
                   {loading ? (
-                    <EmptyChart text="Loading chart..." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={360}>
+  <EmptyChart text="Loading chart..." />
+) : isSupport ? (
+  <RestrictedChart text="Severity distribution hidden for support role." />
+) : (
+  <ResponsiveContainer width="100%" height={360}>
                       <BarChart
                         data={severityPercentData}
                         onClick={(state) => {
@@ -898,9 +1048,11 @@ function Dashboard() {
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
                   {loading ? (
-                    <EmptyChart text="Loading chart..." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={380}>
+  <EmptyChart text="Loading chart..." />
+) : isSupport ? (
+  <RestrictedChart text="Recovery chart hidden for support role." />
+) : (
+  <ResponsiveContainer width="100%" height={380}>
                       <PieChart>
                         <Pie
                           data={recoveryDonutData}
@@ -936,9 +1088,11 @@ function Dashboard() {
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
                   {loading ? (
-                    <EmptyChart text="Loading chart..." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={380}>
+  <EmptyChart text="Loading chart..." />
+) : isSupport ? (
+  <RestrictedChart text="Improvement chart hidden for support role." />
+) : (
+  <ResponsiveContainer width="100%" height={380}>
                       <BarChart
                         data={groupedImprovementData}
                         onClick={(state) => {
@@ -979,9 +1133,11 @@ function Dashboard() {
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
                   {loading ? (
-                    <EmptyChart text="Loading chart..." />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={360}>
+  <EmptyChart text="Loading chart..." />
+) : isSupport ? (
+  <RestrictedChart text="High-priority success data hidden for support role." />
+) : (
+  <ResponsiveContainer width="100%" height={360}>
                       <PieChart>
                         <Pie
                           data={highPrioritySuccessData}
@@ -1007,7 +1163,7 @@ function Dashboard() {
             </>
           )}
 
-          {activePage === "explorer" && (
+          {activePage === "explorer" && !isSupport && (
             <section id="explorer" className="scroll-mt-8">
               <h2 className="text-2xl font-bold text-gray-800 mb-1">
                 Data Explorer
@@ -1166,17 +1322,27 @@ function Dashboard() {
             </section>
           )}
         </div>
+        {showBackToTop && (
+  <button
+    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+    className="fixed bottom-6 right-6 bg-slate-900/90 text-white p-3 rounded-xl shadow-lg hover:bg-slate-800 hover:scale-105 transition"
+  >
+    <ArrowUp size={18} />
+  </button>
+)}
       </main>
     </div>
   );
 }
 
-function Panel({ title, loading, children }) {
+function Panel({ title, loading, restricted = false, children }) {
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
       <h3 className="text-lg font-semibold mb-4">{title}</h3>
       {loading ? (
         <EmptyChart text="Loading chart..." />
+      ) : restricted ? (
+        <RestrictedChart text="This chart is hidden for support users." />
       ) : (
         <ResponsiveContainer width="100%" height={380}>
           {children}
@@ -1190,6 +1356,16 @@ function EmptyChart({ text }) {
   return (
     <div className="h-[380px] flex items-center justify-center text-gray-400">
       {text}
+    </div>
+  );
+}
+
+function RestrictedChart({ text }) {
+  return (
+    <div className="min-h-[380px] flex flex-col items-center justify-center text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+      <Lock size={28} className="mb-3 text-slate-400" />
+      <p className="font-medium">{text}</p>
+      <p className="text-sm mt-1">Visible only to authorized users.</p>
     </div>
   );
 }
